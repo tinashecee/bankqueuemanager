@@ -1,0 +1,29 @@
+<table >
+  <tr>
+    <th>Index</th>
+    <th>Name</th>
+    <th>Bank</th>
+    <th>Branch</th>
+    <th>Service</th>
+    <th>Timestamp</th>
+  </tr>
+  {{#each queue }}
+
+
+    <tr>
+      <th>{{@index }}</th>
+      <th>{{ this.name}}</th>
+      <th>{{ this.bank}}</th>
+      <th>{{ this.branch}}</th>
+      <th>{{ this.service}}</th>
+      <th>{{ this.timestamp}}</th>
+      
+      
+      
+    </tr>
+    {{else}}
+<h1 class="empty">No Customers</h1>
+  {{/each}}
+  </table>
+  <br>
+  <a href="/next" class="button">Link Button</a>
