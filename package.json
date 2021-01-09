@@ -25,7 +25,11 @@
     "express-handlebars": "^5.2.0",
     "http": "0.0.1-security",
     "kafkajs": "^1.14.0",
+    "lodash": "^4.17.20",
+    "nexmo": "^2.9.1",
+    "node-rdkafka": "^2.10.0",
     "redis": "^3.0.2",
+    "socket.io": "^3.0.1",
     "websocket": "^1.0.32"
   },
   "devDependencies": {

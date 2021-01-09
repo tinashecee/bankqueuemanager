@@ -1,25 +1,46 @@
-//import http from "http";
-//import ws from "websocket"
-//import redis from "redis";
+
 const exphbs = require('express-handlebars');
-const { Kafka } = require('kafkajs')
+
 const redis = require('redis');
 const express = require('express');
-const expressLayouts = require('express-ejs-layouts')
 const bodyParser = require('body-parser');
 const path = require('path');
+const Nexmo = require('nexmo');
+const socketio = require('socket.io');
 _ = require('lodash');
+const Kafka = require("node-rdkafka"); // see: https://github.com/blizzard/node-rdkafka 
+const externalConfig = require('./config'); 
+const CONSUMER_GROUP_ID = "node-consumer" 
+// construct a Kafka Configuration object understood by the node-rdkafka library 
+// merge the configuration as defined in config.js with additional properties defined here 
+const kafkaConf = {...externalConfig.kafkaConfig ,
+ ...{ "group.id": CONSUMER_GROUP_ID,
+ "socket.keepalive.enable": true,
+ "debug": "generic,broker,security"} 
+}; 
+const topics = [externalConfig.topic] 
 const app = express();
 app.set('views', path.join(__dirname, 'views'));
 app.engine('handlebars', exphbs({defaultLayout: 'main'}));
 app.set('view engine', 'handlebars');
-let arrr=[]
-app.use(bodyParser.urlencoded({extended:false}));
+//setup public folder
+app.use(express.static('./public'));
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({extended:true}));
 
+const nexmo = new Nexmo({
+  apiKey: '459ed73c',
+  apiSecret: 'CC8KyfR7D2MJmTUB'
+}, {debug: true})
+
+
+//create Redis client
+let client = redis.createClient({port:14560,host:'redis-14560.c16.us-east-1-2.ec2.cloud.redislabs.com',no_ready_check: true,
+auth_pass: 'redissecurepassword001', });
 
 
 app.get('/', (req, res) => {
-  
+      
   
         
         function reassembleSort() {
@@ -92,6 +113,8 @@ app.get('/', (req, res) => {
         '*->service',
         'GET',
         '*->tag',
+        'GET',
+        '*->phone',
         
 
          function(err,values) {
@@ -104,8 +127,8 @@ app.get('/', (req, res) => {
            arr = values;
            var delayInMilliseconds = 2000; 
            setTimeout(function() {
-           
-          console.log(arr) 
+           console.log(arr)
+        
            res.render('index', {
             queue: arr
         });
@@ -188,6 +211,8 @@ reassembleSort(
   '*->timestamp',
   'GET',
   '*->tag',
+  'GET',
+  '*->phone',
    function(err,values) {
       if (err) throw err;
       let arr = []
@@ -196,12 +221,32 @@ reassembleSort(
      //arr=JSON.stringify(values,null,' ');
      arr = values;
      
-    console.log(arr[0])
+   
+    var delayInMilliseconds = 1000;
 
-     var delayInMilliseconds = 1000; 
+  
+    if (arr[1].phone){
+      console.log(arr[1].phone)
+    
+    const text = 'Hello this is Virtual Queue, please make your way to the bank.'
+            nexmo.message.sendSms(
+              'Vonage APIs', arr[1].phone, text, { type: 'unicode'},
+              (err, responseData) => {
+                if(err){
+                  console.log(err)
+                }else{
+                  console.dir(responseData);
+                }
+              }
+            )
+    }
+
+     
      setTimeout(function() {
     // client.del(arr[0].tag);
+    
     client.del(arr[0].tag);
+    
     client.srem("queuemembers", arr[0].tag);
      res.redirect('/');
 }, delayInMilliseconds);
@@ -211,57 +256,65 @@ reassembleSort(
 );
 
   });
-const kafka = new Kafka({
-    'clientId':'myapp',
-    'brokers': ['localhost:19092','localhost:29092','localhost:39092']
-})
-const http = require('http');
-const ws = require('websocket');
-const APPID = process.env.APPID;
-//create Redis client
-let client = redis.createClient();
-const topic = 'testQueue5'
-const consumer = kafka.consumer({
-  groupId: 'group2'
-})
-
-let connections = [];
-const WebSocketServer = ws.server
-
-
-const subscriber = redis.createClient();
-
-const publisher = redis.createClient();
-  
- 
-subscriber.on("subscribe", function(channel, count) {
-  console.log(`Server ${APPID} subscribed successfully to livechat`)
-  publisher.publish("livechat", "a message");
-});
- 
-subscriber.on("message", function(channel, message) {
-  try{
-  //when we receive a message I want t
-  console.log(`Server ${APPID} received message in channel ${channel} msg: ${message}`);
-  connections.forEach(c => c.send(APPID + ":" + message))
-    
+  function sendText(num){
+  const number = num 
+            
   }
-  catch(ex){
-    console.log("ERR::" + ex)
-  }
-});
 
 
-subscriber.subscribe("livechat");
-
-
-//create a raw http server (this will help us create the TCP which will then pass to the websocket to do the job)
-const httpserver = http.createServer()
-
-//pass the httpserver object to the WebSocketServer library to do all the job, this class will override the req/res 
-const websocket = new WebSocketServer({
-    "httpServer": httpserver
-})
+  let stream = new Kafka.KafkaConsumer.createReadStream(kafkaConf, { "auto.offset.reset": "earliest" }, { topics: topics })
+  stream.on('data', function (message) { 
+    //console.log(`Consumed message on Stream: ${message.value.toString()}`);
+    // the structure of the messages is as follows: 
+    // { 
+    // value: Buffer.from('hi'),  // message contents as a Buffer 
+    // size: 2, // size of the message, in bytes 
+    // topic: 'librdtesting-01', // topic the message comes from 
+    // offset: 1337, // offset the message was read from 
+    // partition: 1, // partition the message was on 
+    // key: 'someKey', // key of the message if present 
+    // timestamp: 1510325354780 // timestamp of message creation 
+    // } 
+    try{
+    const jsonObj = JSON.parse(message.value.toString())
+        const id = jsonObj.id;
+        const name = jsonObj.name;
+        const branch = jsonObj.branch;
+        const bank = jsonObj.bank;
+        const service = jsonObj.service;
+        const phone = jsonObj.phone;
+        const timestamp = JSON.parse(message.timestamp.toString())
+        const offset = JSON.parse(message.offset.toString())
+     
+        console.log(id,timestamp, offset, name,branch,bank,service,phone);
+        client.hmset(id, [
+          'timestamp', timestamp,
+          'name', name,
+          'offset', offset,
+          'bank',bank,
+          'tag',id,
+          'phone',phone,
+          'branch',branch,
+          'service',service
+      ], function(err, reply){
+          if(err){
+              console.log(err);
+          }
+          console.log(reply);
+          
+      });
+      client.sadd("queuemembers", id);
+    }
+    catch (error) {
+        console.log('err=', error)
+    }
+  }); 
+  console.log(`Stream consumer created to consume from topic ${topics}`); 
+  stream.consumer.on("disconnected", function (arg) {
+   console.log(`The stream consumer has been disconnected`)  
+   process.exit(); 
+  }); 
+  // automatically disconnect the consumer after 30 seconds setTimeout(function () { stream.consumer.disconnect(); }, 30000)
 const run = async () => {
   await consumer.connect()
   await consumer.subscribe({ topic, fromBeginning: true })
@@ -274,6 +327,7 @@ const run = async () => {
         const branch = jsonObj.branch;
         const bank = jsonObj.bank;
         const service = jsonObj.service;
+        const phone = jsonObj.phone;
         const timestamp = JSON.parse(message.timestamp.toString())
         const offset = JSON.parse(message.offset.toString())
      /*   let passengerInfo = filterPassengerInfo(jsonObj)
@@ -283,13 +337,14 @@ const run = async () => {
             passengerInfo
           )
         }*/
-        console.log(id,timestamp, offset, name,branch,bank,service);
+        console.log(id,timestamp, offset, name,branch,bank,service,phone);
         await client.hmset(id, [
           'timestamp', timestamp,
           'name', name,
           'offset', offset,
           'bank',bank,
           'tag',id,
+          'phone',phone,
           'branch',branch,
           'service',service
       ], function(err, reply){
@@ -306,71 +361,8 @@ const run = async () => {
     }
   })
 }
-run().catch(e => console.error(`[example/consumer] ${e.message}`, e))
-
-const errorTypes = ['unhandledRejection', 'uncaughtException']
-const signalTraps = ['SIGTERM', 'SIGINT', 'SIGUSR2']
-
-errorTypes.map(type => {
-process.on(type, async e => {
-try {
-console.log(`process.on ${type}`)
-console.error(e)
-await consumer.disconnect()
-process.exit(0)
-} catch (_) {
-process.exit(1)
-}
-})
-})
-
-signalTraps.map(type => {
-process.once(type, async () => {
-try {
-await consumer.disconnect()
-} finally {
-process.kill(process.pid, type)
-}
-})
-})
-
-app.listen(8000, () => console.log("My server is listening on port 8000"))
-
-//when a legit websocket request comes listen to it and get the connection .. once you get a connection thats it! 
-websocket.on("request", request=> {
-
-    const con = request.accept(null, request.origin)
-    con.on("open", () => console.log("opened"))
-    con.on("close", () => console.log("CLOSED!!!"))
-    con.on("message", message => {
-        //publish the message to redis
-        console.log(`${APPID} Received message ${message.utf8Data}`)
-        publisher.publish("livechat", message.utf8Data)
-    })
-    function sendNumber() {
-      
-      if (con.connected) {
-          var number = Math.round(Math.random() * 0xFFFFFF);
-          con.sendUTF(number.toString());
-          setTimeout(sendNumber, 1000);
-      }
-  }
-   sendNumber();
-    setTimeout(() => con.send(`Connected successfully to server ${APPID}`), 5000)
-    connections.push(con)
-  
-
-})
-  
-//client code 
-//let ws = new WebSocket("ws://localhost:8080");
-//ws.onmessage = message => console.log(`Received: ${message.data}`);
-//ws.send("Hello! I'm client")
 
 
-/*
-    //code clean up after closing connection
-    subscriber.unsubscribe();
-    subscriber.quit();
-    publisher.quit();
-    */
+
+
+app.listen(3000, () => console.log("My server is listening on port 3000"))
