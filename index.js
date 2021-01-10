@@ -33,7 +33,7 @@ const nexmo = new Nexmo({
   apiSecret: 'CC8KyfR7D2MJmTUB'
 }, {debug: true})
 
-
+const PORT = process.env.PORT || 8080
 //create Redis client
 let client = redis.createClient({port:14560,host:'redis-14560.c16.us-east-1-2.ec2.cloud.redislabs.com',no_ready_check: true,
 auth_pass: 'redissecurepassword001', });
@@ -365,4 +365,4 @@ const run = async () => {
 
 
 
-app.listen(8080, () => console.log("My server is listening on port 8080"))
+app.listen(PORT, () => console.log("My server is listening on port 8080"))
